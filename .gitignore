@@ -30,3 +30,10 @@
 *.exe
 *.out
 *.app
+
+*.suo
+.vs/*
+*.ipch
+*x64*
+*[Dd]ebug*
+*[Rr]ealese*
