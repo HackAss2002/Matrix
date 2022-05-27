@@ -62,6 +62,9 @@ namespace math
     static Matrix identity(size_t size) noexcept;
     static Matrix hilbert(size_t size) noexcept;
 
+    Matrix rotatedJacobi(Matrix& v, Matrix& d) const noexcept;
+    Matrix& rotateJacobi(Matrix& v, Matrix& d) noexcept;
+
   private:
     static Matrix solveSystem(const Matrix& l, const Matrix& u, const Matrix& answers) noexcept;
     double determinantLU(const Matrix& u) const noexcept;

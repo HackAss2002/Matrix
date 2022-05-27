@@ -605,24 +605,26 @@ double MatrixCSR::determinantLU(const MatrixCSR& u) const noexcept
 double MatrixCSR::condLU() const noexcept
 {
   double norm = 0;
-  double sum;
+  double elem;
   for (size_t i = 0; i < _height; ++i)
   {
-    sum = 0;
-    for (size_t j = _iptr[i]; j < _iptr[i + 1]; ++j)
-      sum += abs(_data[j]);
-    norm = sum > norm ? sum : norm;
+    for (size_t j = 0; j < _width; ++j)
+    {
+      elem = getElement(i, j);
+      norm += elem * elem;
+    }
   }
-  MatrixCSR inversed = inverseLU();
+  const MatrixCSR inversed = inverseLU();
   double normInv = 0;
   for (size_t i = 0; i < _height; ++i)
   {
-    sum = 0;
-    for (size_t j = _iptr[i]; j < _iptr[i + 1]; ++j)
-      sum += abs(inversed._data[j]);
-    normInv = sum > normInv ? sum : normInv;
+    for (size_t j = 0; j < _width; ++j)
+    {
+      elem = inversed.getElement(i, j);
+      normInv += elem * elem;
+    }
   }
-  return norm * normInv;
+  return sqrt(norm * normInv);
 }
 
 MatrixCSR& MatrixCSR::transpose() noexcept
@@ -679,6 +681,97 @@ MatrixCSR MatrixCSR::hilbert(size_t size) noexcept
     }
   }
   return matr;
+}
+
+MatrixCSR MatrixCSR::rotatedJacobi(MatrixCSR& v, MatrixCSR& d) const noexcept
+{
+  assert(_width == _height);
+  size_t j, iq, ip, i;
+  double tresh, theta, tau, t, sm, s, h, g, c, aipq, dip, diq;
+  MatrixCSR b(1, _width), z(1, _width);
+  MatrixCSR a = *this;
+  v = identity(_width);
+  d = MatrixCSR(1, _width);
+  const size_t MAXSWEEP = 10000;
+  for (ip = 0; ip < _width; ++ip)
+    b.setElement(ip, a.getElement(ip, ip));
+  size_t nrot = 0;
+  auto rotate = [&](MatrixCSR& a, size_t i, size_t j, size_t k, size_t l)
+  {
+    g = a.getElement(i, j);
+    h = a.getElement(k, l);
+    a.setElement(i, j, g - s * (h + g * tau));
+    a.setElement(k, l, h + s * (g - h * tau));
+  };
+  for (i = 0; i < MAXSWEEP; ++i)
+  {
+    for (sm = 0., ip = 0; ip < _width; ++ip)
+      for (iq = ip + 1; iq < _width; ++iq)
+        sm += fabs(a.getElement(ip, iq));
+    if (!sm)
+      return a;
+    tresh = (i < 3 ? 0.2 * sm / (_width * _width) : 0.);
+    for (ip = 0; ip < _width - 1; ++ip)
+      for (iq = ip + 1; iq < _width; ++iq)
+      {
+        aipq = a.getElement(ip, iq);
+        g = 100. * fabs(aipq);
+        dip = d.getElement(ip);
+        diq = d.getElement(iq);
+        if (i > 3 && fabs(dip + g) == fabs(dip) && fabs(diq + g) == fabs(diq))
+          a.setElement(ip, iq, 0.);
+        else if (fabs(aipq) > tresh)
+        {
+          h = dip - diq;
+          if ((fabs(h) + g) == fabs(h))
+            t = aipq / h;
+          else
+          {
+            theta = 0.5 * h / aipq;
+            t = 1. / (fabs(theta) + sqrt(1. + theta * theta));
+            if (theta < 0.)
+              t = -t;
+          }
+          c = 1. / sqrt(1 + t * t);
+          s = t * c;
+          tau = s / (1. + c);
+          h = t * aipq;
+
+          z.setElement(ip, z.getElement(ip) - h);
+          z.setElement(iq, z.getElement(iq) + h);
+          d.setElement(ip, dip - h);
+          d.setElement(iq, diq + h);
+          a.setElement(ip, iq, 0.);
+
+          for (j = 1; j < ip; ++j)
+            rotate(a, j - 1, ip, j - 1, iq);
+          for (j = ip + 2; j < iq; ++j)
+            rotate(a, ip, j - 1, iq, j - 1);
+          for (j = iq + 1; j < _width; ++j)
+            rotate(a, ip, j, j, iq);
+          for (j = 0; j < _width; ++j)
+            rotate(v, j, ip, j, iq);
+          ++nrot;
+        }
+      }
+    for (ip = 0; ip < _width; ++ip)
+    {
+      b.setElement(ip, b.getElement(ip) + z.getElement(ip));
+      d.setElement(ip, b.getElement(ip));
+      z.setElement(ip, 0.);
+    }
+  }
+#ifdef _DEBUG
+  _wassert(_CRT_WIDE("Too many iterations in the rotate jacobi"), _CRT_WIDE(__FILE__), (unsigned)(__LINE__));
+#endif
+  return *this;
+}
+
+MatrixCSR& MatrixCSR::rotateJacobi(MatrixCSR& v, MatrixCSR& d) noexcept
+{
+  *this = rotatedJacobi(v, d);
+
+  return *this;
 }
 
 std::ostream& operator<<(std::ostream& out, const MatrixCSR& matr) noexcept
