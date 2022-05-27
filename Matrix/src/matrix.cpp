@@ -428,95 +428,105 @@ Matrix Matrix::hilbert(size_t size) noexcept
   return matr;
 }
 
-Matrix Matrix::rotatedJacobi(Matrix& v, Matrix& d) const noexcept
+bool Matrix::isSymmetrical() const noexcept
 {
-  assert(_width == _height);
-  size_t j, iq, ip, i;
-  double tresh, theta, tau, t, sm, s, h, g, c, aipq, dip, diq;
-  Matrix b(1, _width), z(1, _width);
-  Matrix a = *this;
-  v = identity(_width);
-  d = Matrix(1, _width);
-  const size_t MAXSWEEP = 10000;
-  for (ip = 0; ip < _width; ++ip)
-    b.setElement(ip, a.getElement(ip, ip));
-  size_t nrot = 0;
-  auto rotate = [&](Matrix& a, size_t i, size_t j, size_t k, size_t l)
-  {
-    g = a.getElement(i, j);
-    h = a.getElement(k, l);
-    a.setElement(i, j, g - s * (h + g * tau));
-    a.setElement(k, l, h + s * (g - h * tau));
-  };
-  for (i = 0; i < MAXSWEEP; ++i)
-  {
-    for (sm = 0., ip = 0; ip < _width; ++ip)
-      for (iq = ip + 1; iq < _width; ++iq)
-        sm += fabs(a.getElement(ip, iq));
-    if (!sm)
-      return a;
-    tresh = (i < 3 ? 0.2 * sm / (_width * _width) : 0.);
-    for (ip = 0; ip < _width - 1; ++ip)
-      for (iq = ip + 1; iq < _width; ++iq)
-      {
-        aipq = a.getElement(ip, iq);
-        g = 100. * fabs(aipq);
-        dip = d.getElement(ip);
-        diq = d.getElement(iq);
-        if (i > 3 && fabs(dip + g) == fabs(dip) && fabs(diq + g) == fabs(diq))
-          a.setElement(ip, iq, 0.);
-        else if (fabs(aipq) > tresh)
-        {
-          h = dip - diq;
-          if ((fabs(h) + g) == fabs(h))
-            t = aipq / h;
-          else
-          {
-            theta = 0.5 * h / aipq;
-            t = 1. / (fabs(theta) + sqrt(1. + theta * theta));
-            if (theta < 0.)
-              t = -t;
-          }
-          c = 1. / sqrt(1 + t * t);
-          s = t * c;
-          tau = s / (1. + c);
-          h = t * aipq;
+  if (_width != _height)
+    return false;
 
-          z.setElement(ip, z.getElement(ip) - h);
-          z.setElement(iq, z.getElement(iq) + h);
-          d.setElement(ip, dip - h);
-          d.setElement(iq, diq + h);
-          a.setElement(ip, iq, 0.);
+  for (size_t i = 0; i < _width; ++i)
+    for (size_t j = 0; j < i; ++j)
+      if (getElement(i, j) != getElement(j, i))
+        return false;
 
-          for (j = 1; j < ip; ++j)
-            rotate(a, j - 1, ip, j - 1, iq);
-          for (j = ip + 2; j < iq; ++j)
-            rotate(a, ip, j - 1, iq, j - 1);
-          for (j = iq + 1; j < _width; ++j)
-            rotate(a, ip, j, j, iq);
-          for (j = 0; j < _width; ++j)
-            rotate(v, j, ip, j, iq);
-          ++nrot;
-        }
-      }
-    for (ip = 0; ip < _width; ++ip)
-    {
-      b.setElement(ip, b.getElement(ip) + z.getElement(ip));
-      d.setElement(ip, b.getElement(ip));
-      z.setElement(ip, 0.);
-    }
-    }
-#ifdef _DEBUG
-  _wassert(_CRT_WIDE("Too many iterations in the rotate jacobi"), _CRT_WIDE(__FILE__), (unsigned)(__LINE__));
-#endif
-  return *this;
+  return true;
 }
 
-Matrix& Matrix::rotateJacobi(Matrix& v, Matrix& d) noexcept
+size_t Matrix::rotateJacobi(Matrix& solution, double precision) noexcept
 {
-  *this = rotatedJacobi(v, d);
+  assert(isSymmetrical());
+  size_t result = 0;
+  size_t i, j, k;
+  size_t maxI, maxJ;
+  double max, fi;
+  Matrix matricaPoworota(_width);
+  Matrix temp(_width);
+  solution = identity(_width);
+  double fault = 0.0;
+  double value;
+  double sqr2 = sqrt(2);
+  double precision2 = precision * precision / 2;
+  for (i = 0; i < _width; ++i)
+    for (j = i + 1; j < _width; ++j)
+    {
+      value = getElement(i, j);
+      fault += value * value;
+    }
 
-  return *this;
+  while (fault > precision2)
+  {
+    max = 0.0;
+    for (i = 0; i < _width; ++i)
+      for (j = i + 1; j < _width; ++j)
+      {
+        value = fabs(getElement(i, j));
+        if (value > max)
+        {
+          max = value;
+          maxI = i;
+          maxJ = j;
+        }
+      }
+
+    matricaPoworota = identity(_width);
+    if (getElement(maxI, maxI) == getElement(maxJ, maxJ))
+    {
+      value = 1 / sqr2;
+      matricaPoworota.setElement(maxI, maxI, value);
+      matricaPoworota.setElement(maxJ, maxJ, value);
+      matricaPoworota.setElement(maxJ, maxI, value);
+      matricaPoworota.setElement(maxI, maxJ, -value);
+    }
+    else
+    {
+      fi = 0.5 * atan((2.0 * getElement(maxI, maxJ)) /
+        (getElement(maxI, maxI) - getElement(maxJ, maxJ)));
+      value = cos(fi);
+      matricaPoworota.setElement(maxI, maxI, value);
+      matricaPoworota.setElement(maxJ, maxJ, value);
+      value = sin(fi);
+      matricaPoworota.setElement(maxJ, maxI, value);
+      matricaPoworota.setElement(maxI, maxJ, -value);
+    }
+
+    for (i = 0; i < _width; ++i)
+      for (j = 0; j < _width; ++j)
+      {
+        value = 0;
+        for (k = 0; k < _width; ++k)
+          value += matricaPoworota.getElement(k, i) * getElement(k, j);
+        temp.setElement(i, j, value);
+      }
+
+    *this = temp * matricaPoworota;
+    fault = 0.0;
+    for (i = 0; i < _width; ++i)
+      for (j = i + 1; j < _width; ++j)
+      {
+        value = getElement(i, j);
+        fault += value * value;
+      }
+
+    solution *= matricaPoworota;
+    ++result;
+  }
+  return result;
+}
+
+size_t Matrix::rotatedJacobi(Matrix& coef, Matrix& solution, double precision) const noexcept
+{
+  coef = *this;
+  
+  return coef.rotateJacobi(solution, precision);
 }
 
 std::ostream& operator<<(std::ostream& out, const Matrix& matrix) noexcept
